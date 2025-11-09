@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChemStats Lookup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+        html {
+            font-family: 'Inter', sans-serif;
+        }
+        .stat-bar-bg {
+            @apply w-full bg-gray-700 rounded-full h-4;
+        }
+        .stat-bar-fill {
+            @apply bg-blue-500 h-4 rounded-full transition-all duration-1000 ease-out;
+        }
+        /* For the loading spinner */
+        .loader {
+            border-top-color: #3498db;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center p-4">
+
+    <!-- Loading Spinner -->
+    <div id="loading-spinner" class="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-50 hidden">
+        <div class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-32 w-32"></div>
+    </div>
+
+    <!-- Error Message -->
+    <div id="error-message" class="hidden text-center">
+        <h1 class="text-3xl font-bold text-red-500 mb-4">Error</h1>
+        <p class="text-xl text-gray-400" id="error-text">Could not fetch stats.</p>
+        <p class="text-gray-500 mt-2">Please try again or check the query.</p>
+    </div>
+
+    <!-- No Query Message -->
+    <div id="no-query-message" class="hidden text-center">
+        <h1 class="text-4xl font-black mb-4">ChemStats</h1>
+        <p class="text-2xl text-gray-400">Welcome!</p>
+        <p class="text-gray-500 mt-2">Please look up an element or molecule from the sketchpad to see its stats.</p>
+    </div>
+
+    <!-- Stat Card (Main Content) -->
+    <div id="stat-card" class="bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-lg w-full space-y-6 border-t-4 border-blue-500 hidden">
+        
+        <!-- Header -->
+        <div>
+            <div class="flex justify-between items-center mb-1">
+                <h1 id="stat-name" class="text-4xl font-black">Loading...</h1>
+                <span id="stat-type" class="text-sm font-bold uppercase tracking-widest px-3 py-1 rounded-full bg-gray-700 text-blue-400"></span>
+            </div>
+            <p id="stat-description" class="text-lg text-gray-400">Loading description...</p>
+        </div>
+
+        <!-- Stats -->
+        <div class="space-y-4">
+            <!-- Stability -->
+            <div>
+                <span class="text-sm font-semibold uppercase text-gray-300">Stability</span>
+                <div class="stat-bar-bg">
+                    <div id="stat-stability-bar" class="stat-bar-fill bg-green-500" style="width: 0%"></div>
+                </div>
+            </div>
+            <!-- Reactivity -->
+            <div>
+                <span class="text-sm font-semibold uppercase text-gray-300">Reactivity</span>
+                <div class="stat-bar-bg">
+                    <div id="stat-reactivity-bar" class="stat-bar-fill bg-yellow-500" style="width: 0%"></div>
+                </div>
+            </div>
+            <!-- Explosiveness -->
+            <div>
+                <span class="text-sm font-semibold uppercase text-gray-300">Explosiveness</span>
+                <div class="stat-bar-bg">
+                    <div id="stat-explosiveness-bar" class="stat-bar-fill bg-red-500" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fun Fact -->
+        <div class="bg-gray-900 border-l-4 border-blue-500 p-4 rounded-r-lg">
+            <h3 class="font-bold text-gray-400 uppercase text-sm mb-1">Fun Fact</h3>
+            <p id="stat-fun-fact" class="text-gray-300 italic">Loading fun fact...</p>
+        </div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const loadingSpinner = document.getElementById('loading-spinner');
+            const statCard = document.getElementById('stat-card');
+            const errorMessage = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+            const noQueryMessage = document.getElementById('no-query-message');
+
+            // 1. Get query from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const element = urlParams.get('element');
+            const formula = urlParams.get('formula');
+            
+            const query = element || formula;
+
+            if (!query) {
+                // Show a welcome message if no query is present
+                noQueryMessage.classList.remove('hidden');
+            } else {
+                // Fetch stats if we have a query
+                fetchStats(query);
+            }
+
+            // 2. Fetch Stats Function
+            async function fetchStats(query) {
+                loadingSpinner.classList.remove('hidden');
+                statCard.classList.add('hidden');
+                errorMessage.classList.add('hidden');
+
+                try {
+                    // --- THIS IS THE CHANGE (Reverted) ---
+                    // We are back to using a POST request with a JSON body
+                    const response = await fetch(`./api/get_stats`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query: query })
+                    });
+                    // --- END OF CHANGE ---
+
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error || 'Failed to fetch stats');
+                    }
+
+                    const data = await response.json();
+                    updateUI(data);
+                    statCard.classList.remove('hidden');
+
+                } catch (error) {
+                    console.error("Fetch error:", error);
+                    errorText.innerText = `Failed to get stats for "${query}": ${error.message}`;
+                    errorMessage.classList.remove('hidden');
+                } finally {
+                    loadingSpinner.classList.add('hidden');
+                }
+            }
+
+            // 3. Update UI Function
+            function updateUI(data) {
+                // Set card border color based on type
+                const cardBorder = statCard;
+                const typeTag = document.getElementById('stat-type');
+                if (data.query_type === 'element') {
+                    cardBorder.style.borderColor = '#3b82f6'; // Blue
+                    typeTag.style.color = '#3b82f6';
+                } else {
+                    cardBorder.style.borderColor = '#a855f7'; // Purple
+                    typeTag.style.color = '#a855f7';
+                }
+
+                // Update text content
+                document.getElementById('stat-name').innerText = data.name;
+                document.getElementById('stat-type').innerText = data.query_type;
+                document.getElementById('stat-description').innerText = data.description;
+                document.getElementById('stat-fun-fact').innerText = data.fun_fact;
+
+                // Update stat bars (using setTimeout to trigger the transition)
+                setTimeout(() => {
+                    document.getElementById('stat-stability-bar').style.width = `${data.stability * 10}%`;
+                    document.getElementById('stat-reactivity-bar').style.width = `${data.reactivity * 10}%`;
+                    document.getElementById('stat-explosiveness-bar').style.width = `${data.explosiveness * 10}%`;
+                }, 100);
+            }
+        });
+    </script>
+</body>
+</html>
